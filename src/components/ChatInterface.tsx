@@ -11,9 +11,10 @@ interface ChatInterfaceProps {
     messages: Message[];
     onSendMessage: (message: string) => void;
     isLoading: boolean;
+    isRobotMode?: boolean;
 }
 
-export const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, isLoading }) => {
+export const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, isLoading, isRobotMode = false }) => {
     const [input, setInput] = useState('');
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -25,7 +26,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMe
 
     return (
         <div className="panel chat-panel" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <div className="panel-header">Robot Module Creator</div>
+            <div className="panel-header">{isRobotMode ? 'Robot Module Creator' : 'Assistant'}</div>
             <div className="chat-messages">
                 {messages.map((msg, idx) => (
                     <div key={idx} className={`message ${msg.role}`}>
@@ -63,11 +64,14 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMe
                     <input
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        placeholder="Describe your robot module (e.g., 'arm segment', 'wheel mount', 'sensor holder')..."
+                        placeholder={isRobotMode
+                            ? "Describe your robot module (e.g., 'arm segment', 'wheel mount', 'sensor holder')..."
+                            : "Describe what to build..."
+                        }
                     />
                     <button
                         type="submit"
-                        style={{ position: 'absolute', right: 8, top: 6, background: 'none', border: 'none', color: '#58a6ff', cursor: 'pointer' }}
+                        style={{ position: 'absolute', right: 4, top: 7, background: 'none', border: 'none', color: '#58a6ff', cursor: 'pointer' }}
                     >
                         <Send size={16} />
                     </button>
