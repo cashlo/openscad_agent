@@ -15,10 +15,10 @@ export interface OpenSCADViewerRef {
 
 export const OpenSCADViewer = React.forwardRef<OpenSCADViewerRef, OpenSCADViewerProps>(({ code, onError }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
-    const [openscad, setOpenSCAD] = useState<any>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const stderrLog = useRef<string[]>([]);
+    const compilingRef = useRef(false);
 
     // Ref to hold the latest onError callback to avoid re-triggering effect
     const onErrorRef = useRef(onError);
@@ -42,28 +42,6 @@ export const OpenSCADViewer = React.forwardRef<OpenSCADViewerRef, OpenSCADViewer
             return null;
         }
     }));
-
-    // Initialize OpenSCAD WASM
-    useEffect(() => {
-        async function init() {
-            try {
-                // createOpenSCAD returns a wrapper object with renderToStl
-                const wrapper = await createOpenSCAD({
-                    noInitialRun: true,
-                    print: (text: string) => console.log("[OpenSCAD stdout]:", text),
-                    printErr: (text: string) => {
-                        console.log("[OpenSCAD stderr]:", text);
-                        stderrLog.current.push(text);
-                    }
-                });
-                setOpenSCAD(wrapper);
-            } catch (e) {
-                console.error("Failed to load OpenSCAD", e);
-                setError("Failed to load OpenSCAD WASM");
-            }
-        }
-        init();
-    }, []);
 
     // Initialize Three.js
     useEffect(() => {
@@ -125,40 +103,72 @@ export const OpenSCADViewer = React.forwardRef<OpenSCADViewerRef, OpenSCADViewer
     }, []);
 
     // Compile and Render
+    // Compile and Render
     useEffect(() => {
-        if (!openscad || !code || !sceneRef.current) return;
+        if (!code || !sceneRef.current) return;
 
         const compile = async () => {
+            if (compilingRef.current) return;
+            compilingRef.current = true;
+
             setLoading(true);
             setError(null);
             stderrLog.current = []; // Clear previous errors
 
             try {
-                // renderToStl returns the STL content (string or buffer)
-                const output = await openscad.renderToStl(code);
+                // Initialize a FRESH instance every time to avoid memory corruption/state issues
+                const wrapper = await createOpenSCAD({
+                    noInitialRun: true,
+                    print: (text: string) => console.log("[OpenSCAD stdout]:", text),
+                    printErr: (text: string) => {
+                        console.log("[OpenSCAD stderr]:", text);
+                        stderrLog.current.push(text);
+                    }
+                });
+                const instance = wrapper.getInstance();
 
-                // Load STL into Three.js
-                const loader = new STLLoader();
-                const geometry = loader.parse(output);
+                // Write input file to virtual FS
+                instance.FS.writeFile('/input.scad', code);
 
-                geometry.computeBoundingBox();
-                geometry.computeBoundingSphere();
-                geometry.center();
+                // Run OpenSCAD CLI
+                const args = ['/input.scad', '-o', 'output.stl'];
+                instance.callMain(args);
 
-                // Replace mesh
-                if (meshRef.current) {
-                    sceneRef.current?.remove(meshRef.current);
-                    if (meshRef.current.geometry) meshRef.current.geometry.dispose();
+                // Read output file
+                const output = instance.FS.readFile('/output.stl'); // Uint8Array by default
+
+                // Helper to render mesh from STL output
+                const renderMesh = (stlData: string | ArrayBuffer) => {
+                    const loader = new STLLoader();
+                    const geometry = loader.parse(stlData);
+
+                    geometry.computeBoundingBox();
+                    geometry.computeBoundingSphere();
+                    geometry.center();
+
+                    if (meshRef.current) {
+                        sceneRef.current?.remove(meshRef.current);
+                        if (meshRef.current.geometry) meshRef.current.geometry.dispose();
+                    }
+
+                    const material = new THREE.MeshPhongMaterial({ color: 0x99ccff, specular: 0x111111, shininess: 200, side: THREE.DoubleSide });
+                    const mesh = new THREE.Mesh(geometry, material);
+
+                    mesh.rotation.x = -Math.PI / 2;
+                    sceneRef.current?.add(mesh);
+                    meshRef.current = mesh;
+                };
+
+                // Check if output is valid
+                if (output && output.length > 0) {
+                    // STLLoader.parse expects ArrayBuffer or string
+                    const buffer = (output instanceof Uint8Array) ? (output.buffer as ArrayBuffer) : output;
+                    renderMesh(buffer);
+                } else {
+                    throw new Error("No STL output generated");
                 }
 
-                const material = new THREE.MeshPhongMaterial({ color: 0x99ccff, specular: 0x111111, shininess: 200, side: THREE.DoubleSide });
-                const mesh = new THREE.Mesh(geometry, material);
-
-                // Adjust geometry rotation to match Three.js Y-up
-                mesh.rotation.x = -Math.PI / 2;
-
-                sceneRef.current?.add(mesh);
-                meshRef.current = mesh;
+                // Allow the instance to be GC'd by falling out of scope
 
             } catch (err) {
                 console.error("Compilation error", err);
@@ -170,14 +180,15 @@ export const OpenSCADViewer = React.forwardRef<OpenSCADViewerRef, OpenSCADViewer
                 }
             } finally {
                 setLoading(false);
+                compilingRef.current = false;
             }
         };
 
-        // Debounce compilation
+        // Debounce
         const timer = setTimeout(compile, 800);
         return () => clearTimeout(timer);
 
-    }, [code, openscad]); // Changed: Removed onError from dependencies
+    }, [code]);
 
     return (
         <div style={{ width: '100%', height: '100%', position: 'relative' }}>
