@@ -14,9 +14,44 @@ interface Message {
 
 function App() {
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'agent', content: 'Hello! I am your OpenSCAD agent. Describe a 3D model, and I will generate the code for you.' }
+    { role: 'agent', content: 'Hello! I am your Robot Module Creator. Describe a modular robot part, and I will generate the code using standardized connectors.' }
   ]);
-  const [code, setCode] = useState<string>('// Generated OpenSCAD code will appear here\ncube([10, 10, 10], center=true);\n');
+  const [code, setCode] = useState<string>(`include <module_connector.scad>
+
+length = 50;
+
+// Module connectors at both ends
+translate([0,0,length])
+module_connector();
+
+translate([0,0,-6])
+module_connector();
+
+// Main body
+difference(){
+    cylinder(length, 40/2, 40/2, $fn=100);
+    
+    // Cut for assembly
+    cube([length*2, 0.1, length*2], true);
+
+
+              //Screw holes
+          for(i=[0:1])
+          mirror([i,0,0])
+          translate([40/2,-2.5,length/2])
+          rotate([90,0,0]){
+              cylinder(length, d=15);
+              translate([-3,0,-1])
+              cylinder(2, d1=3.1, d2=6);
+
+              #translate([-3,0,-25])
+              cylinder(50, d=3.1);
+
+              translate([-4,-3,-5-2.8])
+              cube([10,5.8,2.8]);
+          }
+}
+`);
   const [isLoading, setIsLoading] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const viewerRef = useRef<OpenSCADViewerRef>(null);
@@ -40,13 +75,52 @@ function App() {
       }
 
       // System Instructions
-      const systemInstruction = `You are an expert OpenSCAD programmer. 
-      Your task is to generate OpenSCAD code based on the user's description.
-      - Return ONLY the OpenSCAD code.
-      - Do not include markdown backticks or explanations.
-      - Ensure the code is valid.
-      - Use 'fn=100' for smooth circles/spheres unless low poly is requested.
-      - Always center objects unless requested otherwise.
+      const systemInstruction = `You are an expert OpenSCAD programmer specializing in modular robot parts.
+      Your task is to generate OpenSCAD code for robot modules based on the user's description.
+      
+      IMPORTANT RULES:
+      - ALWAYS include "include <module_connector.scad>" at the top of the code
+      - Use module_connector() to add standardized connectors at connection points
+      - Connectors are typically placed at opposite ends of the module
+      - Return ONLY the OpenSCAD code without markdown backticks or explanations
+      - Ensure the code is valid OpenSCAD
+      - Use '$fn=100' for smooth circles/spheres unless low poly is requested
+      - Include assembly cuts (thin cube cuts) to make 3D printing easier
+      - Add screw holes for assembly when appropriate
+      
+      EXAMPLE REFERENCE (from example_robot_module.scad):
+      include <module_connector.scad>
+      
+      length = 50;
+      
+      // Module connectors at both ends
+      translate([0,0,length])
+      module_connector();
+      
+      translate([0,0,-6])
+      module_connector();
+      
+      // Main body with assembly features
+      difference(){
+          cylinder(length, 40/2, 40/2, $fn=100);
+          cube([length*2, 0.1, length*2], true); // assembly cut each connector need to have one
+
+          //Screw holes
+          for(i=[0:1])
+          mirror([i,0,0])
+          translate([40/2,-2.5,length/2])
+          rotate([90,0,0]){
+              cylinder(length, d=15);
+              translate([-3,0,-1])
+              cylinder(2, d1=3.1, d2=6);
+
+              #translate([-3,0,-25])
+              cylinder(50, d=3.1);
+
+              translate([-4,-3,-5-2.8])
+              cube([10,5.8,2.8]);
+          }
+      }
       
       Current Code:
       ${code}`;
