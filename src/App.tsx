@@ -13,10 +13,19 @@ interface Message {
 }
 
 function App() {
+  // Check URL parameter for robot mode
+  const urlParams = new URLSearchParams(window.location.search);
+  const isRobotMode = urlParams.has('robot');
+
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'agent', content: 'Hello! I am your Robot Module Creator. Describe a modular robot part, and I will generate the code using standardized connectors.' }
+    {
+      role: 'agent',
+      content: isRobotMode
+        ? 'Hello! I am your Robot Module Creator. Describe a modular robot part, and I will generate the code using standardized connectors.'
+        : 'Hello! I am your OpenSCAD agent. Describe a 3D model, and I will generate the code for you.'
+    }
   ]);
-  const [code, setCode] = useState<string>(`include <module_connector.scad>
+  const robotInitialCode = `include <module_connector.scad>
 
 length = 50;
 
@@ -51,7 +60,13 @@ difference(){
               cube([10,5.8,2.8]);
           }
 }
-`);
+`;
+
+  const generalInitialCode = `// Generated OpenSCAD code will appear here
+cube([10, 10, 10], center=true);
+`;
+
+  const [code, setCode] = useState<string>(isRobotMode ? robotInitialCode : generalInitialCode);
   const [isLoading, setIsLoading] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const viewerRef = useRef<OpenSCADViewerRef>(null);
@@ -75,7 +90,7 @@ difference(){
       }
 
       // System Instructions
-      const systemInstruction = `You are an expert OpenSCAD programmer specializing in modular robot parts.
+      const robotSystemInstruction = `You are an expert OpenSCAD programmer specializing in modular robot parts.
       Your task is to generate OpenSCAD code for robot modules based on the user's description.
       
       IMPORTANT RULES:
@@ -124,6 +139,19 @@ difference(){
       
       Current Code:
       ${code}`;
+
+      const generalSystemInstruction = `You are an expert OpenSCAD programmer.
+      Your task is to generate OpenSCAD code based on the user's description.
+      - Return ONLY the OpenSCAD code.
+      - Do not include markdown backticks or explanations.
+      - Ensure the code is valid.
+      - Use '$fn=100' for smooth circles/spheres unless low poly is requested.
+      - Always center objects unless requested otherwise.
+      
+      Current Code:
+      ${code}`;
+
+      const systemInstruction = isRobotMode ? robotSystemInstruction : generalSystemInstruction;
 
       const contents = currentMessages.map(m => {
         const role = m.role === 'agent' ? 'model' : 'user';
@@ -241,6 +269,7 @@ difference(){
             messages={messages}
             onSendMessage={handleSendMessage}
             isLoading={isLoading}
+            isRobotMode={isRobotMode}
           />
         </div>
         <div className="editor-area">
