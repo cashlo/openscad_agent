@@ -25,7 +25,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMe
 
     return (
         <div className="panel chat-panel" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <div className="panel-header">Assistant</div>
+            <div className="panel-header">Robot Module Creator</div>
             <div className="chat-messages">
                 {messages.map((msg, idx) => (
                     <div key={idx} className={`message ${msg.role}`}>
@@ -63,7 +63,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMe
                     <input
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        placeholder="Describe what to build..."
+                        placeholder="Describe your robot module (e.g., 'arm segment', 'wheel mount', 'sensor holder')..."
                     />
                     <button
                         type="submit"
