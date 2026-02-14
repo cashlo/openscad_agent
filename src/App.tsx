@@ -69,6 +69,9 @@ cube([10, 10, 10], center=true);
   const [code, setCode] = useState<string>(isRobotMode ? robotInitialCode : generalInitialCode);
   const [isLoading, setIsLoading] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [shouldVisualCheck, setShouldVisualCheck] = useState(false);
+  const [lastUserRequest, setLastUserRequest] = useState<string>('');
+  const [verificationRetryCount, setVerificationRetryCount] = useState(0);
   const viewerRef = useRef<OpenSCADViewerRef>(null);
 
   const generateStream = async (currentMessages: Message[]) => {
@@ -229,6 +232,20 @@ cube([10, 10, 10], center=true);
       generatedCode = generatedCode.trim();
       setCode(generatedCode);
 
+      // Update last message to show completion status instead of code
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
+          role: 'agent',
+          content: '✓ Code generated successfully',
+          thought: accumulatedThought
+        };
+        return updated;
+      });
+
+      // Mark that we should do a visual check after this renders
+      setShouldVisualCheck(true);
+
     } catch (error) {
       console.error(error);
       setMessages(prev => [...prev, { role: 'agent', content: 'Sorry, I encountered an error communicating with the API.' }]);
@@ -239,21 +256,29 @@ cube([10, 10, 10], center=true);
 
   const handleSendMessage = async (userMessage: string) => {
     setRetryCount(0); // Reset retries on new user intent
+    setVerificationRetryCount(0); // Reset verification retries
+    setLastUserRequest(userMessage); // Store user request for visual check
     const newMessages: Message[] = [...messages, { role: 'user', content: userMessage }];
     setMessages(newMessages);
     await generateStream(newMessages);
   };
 
+  const handleDownload = () => {
+    if (viewerRef.current) {
+      viewerRef.current.downloadSTL();
+    }
+  };
+
   const handleCompilationError = async (errorMsg: string) => {
     if (retryCount >= 3) {
-      setMessages(prev => [...prev, { role: 'agent', content: `I tried to fix the code 3 times but failed. Error: ${errorMsg}` }]);
+      setMessages(prev => [...prev, { role: 'agent', content: `I tried to fix the code 3 times but failed.Error: ${errorMsg} ` }]);
       return;
     }
 
-    console.log(`Auto-correcting (Attempt ${retryCount + 1})... Error: ${errorMsg}`);
+    console.log(`Auto - correcting(Attempt ${retryCount + 1})...Error: ${errorMsg} `);
     setRetryCount(prev => prev + 1);
 
-    const errorMessage = `The previous code failed to compile with error:\n${errorMsg}\n\nPlease fix the OpenSCAD code.`;
+    const errorMessage = `The previous code failed to compile with error: \n${errorMsg} \n\nPlease fix the OpenSCAD code.`;
     // We append this as a user message so the model sees it as a request/constraint
     const newMessages: Message[] = [...messages, { role: 'user', content: errorMessage }];
     setMessages(newMessages);
@@ -261,9 +286,119 @@ cube([10, 10, 10], center=true);
     await generateStream(newMessages);
   };
 
-  const handleDownload = () => {
-    if (viewerRef.current) {
-      viewerRef.current.downloadSTL();
+  const handleRenderSuccess = async () => {
+    // Only do visual check if we just generated new code
+    if (!shouldVisualCheck || !lastUserRequest) {
+      return;
+    }
+
+    setShouldVisualCheck(false); // Reset flag
+
+    // Add "verifying" message
+    setMessages(prev => [...prev, {
+      role: 'agent',
+      content: '🔍 Verifying model...'
+    }]);
+
+    // Wait a bit for rendering to stabilize
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    try {
+      const apiKey = localStorage.getItem('openai_api_key');
+      if (!apiKey) return;
+
+      // Capture screenshots from 4 angles
+      const screenshots = viewerRef.current?.captureMultiAngleScreenshots();
+      if (!screenshots || screenshots.length === 0) return;
+
+      const client = new GoogleGenAI({ apiKey });
+
+      // Ask AI to verify the visual output
+      const verificationPrompt = `The user requested: "${lastUserRequest}"
+
+I generated OpenSCAD code and here are screenshots of the rendered 3D model from 4 different angles:
+      1. Perspective view
+      2. Front view
+      3. Top view
+      4. Side view
+
+Please briefly verify if the rendered model matches what the user requested.If it looks correct, say "✓ The model looks good!" If there are issues, briefly mention them.`;
+
+      // Build parts array with text and all 4 images
+      const parts: any[] = [{ text: verificationPrompt }];
+
+      for (const { screenshot } of screenshots) {
+        const base64Data = screenshot.split(',')[1];
+        parts.push({
+          inlineData: {
+            mimeType: "image/png",
+            data: base64Data
+          }
+        });
+      }
+
+      // @ts-ignore
+      const response = await client.models.generateContent({
+        model: 'gemini-3-pro-preview',
+        contents: [{
+          role: 'user',
+          parts
+        }],
+        config: {
+          temperature: 0.3
+        }
+      });
+
+      // @ts-ignore
+      const result = await response;
+      // @ts-ignore
+      const verificationText = result.candidates?.[0]?.content?.parts?.[0]?.text || 'Visual check completed.';
+
+      // Replace the "verifying" message with the result
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
+          role: 'agent',
+          content: verificationText
+        };
+        return updated;
+      });
+
+      // Check if verification failed (look for negative indicators)
+      const verificationFailed =
+        !verificationText.includes('✓') &&
+        !verificationText.toLowerCase().includes('looks good');
+
+      // If verification failed and we haven't retried too many times, auto-fix
+      if (verificationFailed && verificationRetryCount < 2) {
+        setVerificationRetryCount(prev => prev + 1);
+
+        // Add a message explaining we're fixing it
+        setMessages(prev => [...prev, {
+          role: 'agent',
+          content: `🔧 Attempting to fix the issues... (Attempt ${verificationRetryCount + 1}/2)`
+        }]);
+
+        // Regenerate code with the verification feedback
+        const fixPrompt = `The model has issues:\n${verificationText}\n\nPlease regenerate the OpenSCAD code to fix these problems.`;
+        const newMessages: Message[] = [...messages, { role: 'user', content: fixPrompt }];
+        setMessages(newMessages);
+        await generateStream(newMessages);
+      } else if (verificationRetryCount >= 2 && verificationFailed) {
+        // Max retries reached
+        setMessages(prev => [...prev, {
+          role: 'agent',
+          content: '⚠️ Could not automatically fix the issues after 2 attempts. Please try rephrasing your request or manually edit the code.'
+        }]);
+        setVerificationRetryCount(0); // Reset for next request
+      } else {
+        // Verification passed, reset counter
+        setVerificationRetryCount(0);
+      }
+
+    } catch (error) {
+      console.error('Visual check error:', error);
+      // Silently fail - don't bother user with verification errors
     }
   };
 
@@ -283,7 +418,12 @@ cube([10, 10, 10], center=true);
         </div>
       </div>
       <div className="viewer-area">
-        <OpenSCADViewer ref={viewerRef} code={code} onError={handleCompilationError} />
+        <OpenSCADViewer
+          ref={viewerRef}
+          code={code}
+          onError={handleCompilationError}
+          onRenderSuccess={handleRenderSuccess}
+        />
       </div>
     </Layout>
   );

@@ -7,14 +7,16 @@ import { createOpenSCAD } from 'openscad-wasm';
 interface OpenSCADViewerProps {
     code: string;
     onError?: (error: string) => void;
+    onRenderSuccess?: () => void;
 }
 
 export interface OpenSCADViewerRef {
     captureScreenshot: () => string | null;
+    captureMultiAngleScreenshots: () => { angle: string; screenshot: string }[];
     downloadSTL: () => void;
 }
 
-export const OpenSCADViewer = React.forwardRef<OpenSCADViewerRef, OpenSCADViewerProps>(({ code, onError }, ref) => {
+export const OpenSCADViewer = React.forwardRef<OpenSCADViewerRef, OpenSCADViewerProps>(({ code, onError, onRenderSuccess }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
@@ -42,6 +44,44 @@ export const OpenSCADViewer = React.forwardRef<OpenSCADViewerRef, OpenSCADViewer
                 return rendererRef.current.domElement.toDataURL('image/png');
             }
             return null;
+        },
+        captureMultiAngleScreenshots: () => {
+            if (!rendererRef.current || !sceneRef.current || !cameraRef.current) {
+                return [];
+            }
+
+            const screenshots: { angle: string; screenshot: string }[] = [];
+            const camera = cameraRef.current;
+            const scene = sceneRef.current;
+            const renderer = rendererRef.current;
+
+            // Store original camera position
+            const originalPosition = camera.position.clone();
+
+            // Define 4 standard angles
+            const angles = [
+                { name: 'perspective', position: new THREE.Vector3(50, 50, 50) },
+                { name: 'front', position: new THREE.Vector3(0, 0, 100) },
+                { name: 'top', position: new THREE.Vector3(0, 100, 0) },
+                { name: 'side', position: new THREE.Vector3(100, 0, 0) }
+            ];
+
+            // Capture screenshot from each angle
+            for (const angle of angles) {
+                camera.position.copy(angle.position);
+                camera.lookAt(0, 0, 0);
+                renderer.render(scene, camera);
+
+                const screenshot = renderer.domElement.toDataURL('image/png');
+                screenshots.push({ angle: angle.name, screenshot });
+            }
+
+            // Restore original camera position
+            camera.position.copy(originalPosition);
+            camera.lookAt(0, 0, 0);
+            renderer.render(scene, camera);
+
+            return screenshots;
         },
         downloadSTL: () => {
             if (!stlDataRef.current) {
@@ -229,6 +269,11 @@ polygon([[0,0], [og,0], [og+so, 3.5], [og+so+t, 3.5], [og+so+t+si, 0],
                     // STLLoader.parse expects ArrayBuffer or string
                     const buffer = (output instanceof Uint8Array) ? (output.buffer as ArrayBuffer) : output;
                     renderMesh(buffer);
+
+                    // Notify parent that rendering succeeded
+                    if (onRenderSuccess) {
+                        onRenderSuccess();
+                    }
                 } else {
                     throw new Error("No STL output generated");
                 }
