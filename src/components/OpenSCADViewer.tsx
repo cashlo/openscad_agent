@@ -11,6 +11,7 @@ interface OpenSCADViewerProps {
 
 export interface OpenSCADViewerRef {
     captureScreenshot: () => string | null;
+    downloadSTL: () => void;
 }
 
 export const OpenSCADViewer = React.forwardRef<OpenSCADViewerRef, OpenSCADViewerProps>(({ code, onError }, ref) => {
@@ -31,8 +32,9 @@ export const OpenSCADViewer = React.forwardRef<OpenSCADViewerRef, OpenSCADViewer
     const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
     const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
     const meshRef = useRef<THREE.Mesh | null>(null);
+    const stlDataRef = useRef<Uint8Array | null>(null);
 
-    // Expose screenshot method
+    // Expose screenshot and download methods
     React.useImperativeHandle(ref, () => ({
         captureScreenshot: () => {
             if (rendererRef.current && sceneRef.current && cameraRef.current) {
@@ -40,6 +42,23 @@ export const OpenSCADViewer = React.forwardRef<OpenSCADViewerRef, OpenSCADViewer
                 return rendererRef.current.domElement.toDataURL('image/png');
             }
             return null;
+        },
+        downloadSTL: () => {
+            if (!stlDataRef.current) {
+                console.warn('No STL data available to download');
+                return;
+            }
+
+            // Create blob and download (cast buffer to ArrayBuffer for type safety)
+            const blob = new Blob([stlDataRef.current.buffer as ArrayBuffer], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `model_${Date.now()}.stl`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
         }
     }));
 
@@ -202,6 +221,11 @@ polygon([[0,0], [og,0], [og+so, 3.5], [og+so+t, 3.5], [og+so+t+si, 0],
 
                 // Check if output is valid
                 if (output && output.length > 0) {
+                    // Store STL data for download (only if it's Uint8Array)
+                    if (output instanceof Uint8Array) {
+                        stlDataRef.current = output;
+                    }
+
                     // STLLoader.parse expects ArrayBuffer or string
                     const buffer = (output instanceof Uint8Array) ? (output.buffer as ArrayBuffer) : output;
                     renderMesh(buffer);

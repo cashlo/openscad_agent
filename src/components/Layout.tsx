@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Settings, Box } from 'lucide-react';
+import { Settings, Box, Download } from 'lucide-react';
 
 interface LayoutProps {
     children: React.ReactNode;
+    onDownload?: () => void;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, onDownload }) => {
     const [apiKey, setApiKey] = useState(localStorage.getItem('openai_api_key') || '');
     const [showSettings, setShowSettings] = useState(false);
 
@@ -22,7 +23,12 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                     <h1>OpenSCAD Agent</h1>
                 </div>
                 <div className="header-controls">
-                    <button onClick={() => setShowSettings(!showSettings)} className="icon-btn">
+                    {onDownload && (
+                        <button onClick={onDownload} className="icon-btn" title="Download STL">
+                            <Download size={20} />
+                        </button>
+                    )}
+                    <button onClick={() => setShowSettings(!showSettings)} className="icon-btn" title="Settings">
                         <Settings size={20} />
                     </button>
                 </div>

@@ -261,8 +261,14 @@ cube([10, 10, 10], center=true);
     await generateStream(newMessages);
   };
 
+  const handleDownload = () => {
+    if (viewerRef.current) {
+      viewerRef.current.downloadSTL();
+    }
+  };
+
   return (
-    <Layout>
+    <Layout onDownload={handleDownload}>
       <div className="sidebar">
         <div className="chat-area">
           <ChatInterface
