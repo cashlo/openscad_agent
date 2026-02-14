@@ -29,21 +29,30 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMe
             <div className="chat-messages">
                 {messages.map((msg, idx) => (
                     <div key={idx} className={`message ${msg.role}`}>
-                        {msg.thought && (
-                            <details className="thinking-process" style={{ marginBottom: '8px', fontSize: '0.9em', color: '#8b949e' }}>
-                                <summary style={{ cursor: 'pointer', userSelect: 'none' }}>Thinking Process</summary>
-                                <div style={{
-                                    whiteSpace: 'pre-wrap',
-                                    marginTop: '4px',
-                                    padding: '8px',
-                                    background: 'rgba(0,0,0,0.2)',
-                                    borderRadius: '4px',
-                                    borderLeft: '2px solid #58a6ff'
-                                }}>
-                                    {msg.thought}
-                                </div>
-                            </details>
-                        )}
+                        {msg.thought && (() => {
+                            //const match = msg.thought.match(/^\*\*([^*]+)\*\*\s*/);
+                            const allMatches = [...msg.thought.matchAll(/\*\*([^*]+)\*\*/g)];
+
+                            // 3. Grab the last match found, or default to 'Thinking Process'
+                            const lastMatch = allMatches.length > 0 ? allMatches[allMatches.length - 1] : null;
+                            const title = lastMatch ? lastMatch[1] : 'Thinking Process';
+                            const content = msg.thought;
+                            return (
+                                <details className="thinking-process" style={{ marginBottom: '8px', fontSize: '0.9em', color: '#8b949e' }}>
+                                    <summary style={{ cursor: 'pointer', userSelect: 'none', fontWeight: 'bold' }}>{title}</summary>
+                                    <div style={{
+                                        whiteSpace: 'pre-wrap',
+                                        marginTop: '4px',
+                                        padding: '8px',
+                                        background: 'rgba(0,0,0,0.2)',
+                                        borderRadius: '4px',
+                                        borderLeft: '2px solid #58a6ff'
+                                    }}>
+                                        {content}
+                                    </div>
+                                </details>
+                            );
+                        })()}
                         {msg.content}
                     </div>
                 ))}
