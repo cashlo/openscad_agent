@@ -322,7 +322,11 @@ I generated OpenSCAD code and here are screenshots of the rendered 3D model from
       3. Top view
       4. Side view
 
-Please briefly verify if the rendered model matches what the user requested.If it looks correct, say "✓ The model looks good!" If there are issues, briefly mention them.`;
+Please briefly verify if the rendered model matches what the user requested.If it looks correct check for the following:
+      1. Nothing is floating or disconnected unless specified by the user.
+      2. Object can be used as user specified.
+
+Say "✓ The model looks good!" If there are issues, briefly mention them.`;
 
       // Build parts array with text and all 4 images
       const parts: any[] = [{ text: verificationPrompt }];
