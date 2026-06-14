@@ -343,7 +343,7 @@ Say "✓ The model looks good!" If there are issues, briefly mention them.`;
 
       // @ts-ignore
       const response = await client.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model: 'gemini-3.1-pro-preview',
         contents: [{
           role: 'user',
           parts
