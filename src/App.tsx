@@ -176,7 +176,7 @@ cube([10, 10, 10], center=true);
       // Call Gemini API with Streaming and Thinking
       // @ts-ignore
       const response = await client.models.generateContentStream({
-        model: 'gemini-3-pro-preview',
+        model: 'gemini-3.1-pro-preview',
         contents: contents,
         config: {
           systemInstruction: {
